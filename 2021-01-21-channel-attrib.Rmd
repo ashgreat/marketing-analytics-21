@@ -1,0 +1,123 @@
+---
+title: "Sales Attribution"
+author: "Ashwin Malshe"
+date: "1/19/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ChannelAttribution)
+```
+
+
+This example uses data from here:
+https://www.analyticsvidhya.com/blog/2018/01/channel-attribution-modeling-using-markov-chains-in-r/
+
+However, the code will not match exactly as I have modified it substantially.
+
+## Import the data set
+
+```{r}
+
+dt <- readr::read_csv("Channel_attribution.csv") %>% 
+  janitor::clean_names() 
+
+```
+
+`ChannelAttribution` package requires all the values to be paths. These paths are in the first 20 columns.
+
+Let's create a variable called `path` which will hold the full path.
+
+```{r}
+dt2 <- dt %>% 
+  select(-output) %>% 
+  tidyr::unite(path, r05a_01:r05a_20, sep = " > ", na.rm = TRUE)
+```
+
+In this data set, there are no non-purchases, which is by mistake. As this is a simulation exercise, let's convert around 50% of the observations into non purchases.
+
+In the resulting data set, we also create a column that indicates where a purchase was made or not.
+
+```{r}
+
+# Randomly select 50% of the rows
+# 
+set.seed(8090)
+index <- sample(nrow(dt2), nrow(dt2)/2)
+
+# Create a new data set by stacking two halves
+
+dt3 <- dt2[index,] %>% 
+  mutate(path = stringr::str_replace(path, " > 21", ""),
+         conversion = 0) %>% 
+  rbind(dt2[-index,] %>% 
+          mutate(path = stringr::str_replace(path, " > 21", ""),
+                 conversion = 1))
+
+```
+
+
+
+## Create heuristic models
+
+```{r}
+h_model <- heuristic_models(dt3, "path", "conversion", var_value = "conversion")
+```
+
+
+```{r}
+h_model %>% 
+  mutate(channel_name = as.integer(channel_name)) %>% 
+  arrange(channel_name)
+```
+
+
+```{r}
+set.seed(87965)
+m_model <- markov_model(dt3, 'path', 'conversion', var_value = 'conversion', order = 1)
+```
+
+```{r}
+m_model
+```
+
+## Value implication
+
+In the above example, we did not have any variable to capture the value of the product bought. But in practice, marketers know the price of the item purchased and the profit margin. Using either the profit or the revenue, we can do a further valuation analysis.
+
+For this simulated example, let's add two columns for sale and profit.
+
+```{r}
+
+set.seed(99056)
+
+dt4 <- dt3 %>% 
+  mutate(sale = conversion * (100 + 100 * runif(nrow(dt3))),
+         profit = ifelse(conversion == 1, 10 + 5 * rnorm(nrow(dt3)), -2))
+```
+
+
+### Create heuristic models
+
+```{r}
+h_model1 <- heuristic_models(dt4, "path", "conversion", var_value = "profit")
+```
+
+
+```{r}
+h_model1 %>% 
+  mutate(channel_name = as.integer(channel_name)) %>% 
+  arrange(channel_name)
+```
+
+
+```{r}
+set.seed(22033)
+m_model1 <- markov_model(dt4, 'path', 'conversion', var_value = 'profit', order = 1)
+```
+
+```{r}
+m_model1
+```

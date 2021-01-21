@@ -1,0 +1,131 @@
+---
+title: "SFA"
+author: "Ashwin Malshe"
+date: "1/20/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(frontier)
+```
+
+
+```{r}
+mex_dt <- haven::read_dta("mexico-cstat.zip") %>% 
+  mutate(cyear = lubridate::year(datadate))
+```
+
+```{r}
+count(mex_dt, cyear)
+```
+
+```{r}
+summary(mex_dt$sale)
+```
+
+We will use a subset of this data set. The output variable is `sale` and the inputs are the assets (`at`), selling and general administrative expenses (`xsga`), which some people use as a proxy for marketing, and number of employees (`emp`).
+
+Due to limited number of observations, we will combine observations across the years. This is not technically right and we should use a panel model for this.
+
+```{r}
+
+mex_dt2 <- mex_dt %>% 
+  select(sale, at, xsga, emp, sic) %>% 
+  mutate(across(everything(), ~ ifelse(.x <= 0, NA, .x))) %>% # Set negative or zero values to NA
+  tidyr::drop_na()  %>% # Drop missing observations.
+  mutate(onedsic = factor(as.integer(sic) %/% 1000)) # We will use it in the second SFA model
+```
+
+
+```{r}
+lm(sale ~ at + xsga + emp, data = mex_dt2) %>%  summary()
+```
+
+## SFA
+
+For running an SFA model, we have to use logged values for all the variables.
+
+```{r}
+model_sfa <- sfa(log(sale) ~ log(at) + log(xsga) + log(emp), data = mex_dt2)
+```
+
+```{r}
+summary(model_sfa)
+```
+
+
+## Obtain technical efficiency estimates
+
+```{r}
+model_eff <- efficiencies(model_sfa)
+```
+
+```{r}
+head(model_eff)
+```
+
+
+Plot these efficiencies as histograms
+
+```{r}
+
+model_eff %>% 
+  as.data.frame() %>% 
+  ggplot(aes(efficiency)) +
+  geom_histogram(color = "white") +
+  theme_minimal()
+
+```
+
+
+## Modeling the determinants of efficiency
+
+As a variation of the basic SFA model, we can make the mean of the inefficiency term a function of some other variables. For instance, if we believe that the inefficiency is a function of the industry in which companies operate, we can model that directly. 
+
+In the following code, we will use `onedsic`
+
+```{r}
+model_sfa2 <- sfa(log(sale) ~ log(at) + log(xsga) + log(emp) | onedsic, data = mex_dt2)
+```
+
+```{r}
+summary(model_sfa2)
+```
+
+
+```{r}
+model_eff2 <- efficiencies(model_sfa2, margEff = TRUE)
+```
+
+```{r}
+head(model_eff2)
+```
+
+How do we extract the marginal effects? They are stored in `model_eff2` as `attributes`
+
+```{r}
+model_eff2_me <- attributes(model_eff2)
+```
+
+```{r}
+head(model_eff2_me$margEff)
+```
+
+```{r}
+model_eff2_me$margEff %>% 
+  as.data.frame() %>% 
+  summary()
+```
+
+
+```{r}
+model_sfa3 <- sfa(log(sale) ~ log(at) + log(xsga) + log(emp) | onedsic - 1, data = mex_dt2)
+```
+
+```{r}
+summary(model_sfa3)
+```
+
+

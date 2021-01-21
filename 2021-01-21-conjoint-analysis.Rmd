@@ -1,0 +1,115 @@
+---
+title: "Conjoint Analysis"
+author: "Ashwin Malshe"
+date: "1/20/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(radiant)
+```
+
+
+
+## Design of experiment
+
+```{r}
+all_profile <- doe(c("room; Small Suite; Large Room; Room Office",
+                      "bus_amenities; Internet access; Speaker phone; Room fax",
+                      "leisure; Exercise room; Pool; Exercise room and Pool",
+                      "extras; Shoe shine; Tape library; Fruit and cheese; Newspaper",
+                      "rest_delivery; No; Yes"), seed = 777)
+```
+
+
+
+
+```{r}
+all_profile_dt <- summary(all_profile)
+```
+
+
+`Radiant` changed all the levels with spaces into underscores. This will create problems later on.
+
+```{r}
+all_profile_dt <- all_profile_dt %>% 
+  mutate(across(everything(), ~stringr::str_replace_all(.x, "_", " ")))
+```
+
+
+
+Import the profiles
+
+```{r}
+forte_plan <- readxl::read_excel("Forte Hotel.xlsx", sheet = "Plan-extended") %>% 
+  mutate(across(everything(), as.factor))
+```
+
+
+
+
+
+
+
+```{r}
+forte <- readxl::read_excel("Forte Hotel.xlsx", sheet = "Preference") %>% 
+  mutate(repondent = row_number()) %>% 
+  tidyr::pivot_longer(starts_with("Bundle"), names_to = "profile", values_to = "preference") %>% 
+  mutate(profile = as.factor(profile))
+```
+
+
+
+```{r}
+forte_full <- inner_join(forte, forte_plan, by = "profile")
+```
+
+
+## Conjoint analysis
+
+```{r}
+conjoint1 <- forte_full %>% 
+  conjoint(rvar = "preference", evar = c("room", "bus_amenities",	"leisure",	"extras",	"rest_delivery"))
+```
+
+
+```{r}
+summary(conjoint1)
+```
+
+Plot the results
+
+```{r}
+plot(conjoint1)
+```
+
+
+
+
+
+```{r}
+predict(conjoint1, all_profile_dt) %>% 
+  arrange(-Prediction)
+```
+
+
+## Business simulations
+
+Although from all the possible profiles we can get the most valued profile, it may not be practical or profitable. The marketing managers may have a few business profiles identified before the analysis.
+
+Let's figure out which one of these is the best profile.
+
+```{r}
+forte_sim <- readxl::read_excel("Forte Hotel.xlsx", sheet = "Simulation Profiles") %>% 
+  mutate(across(everything(), as.factor))
+```
+
+
+
+```{r}
+forte_sim$Simulations %>% 
+  cbind(predict(conjoint1, forte_sim) )
+
+```
