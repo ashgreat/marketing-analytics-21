@@ -1,0 +1,202 @@
+---
+title: "Calcualting CLV"
+author: "Ashwin Malshe"
+date: "22-January-2021"
+output: html_output
+---
+Using 3 functions that I wrote, this post shows how to get customer lifetime value (CLV). The example relies on the method described in the book Marketing Engineering.
+
+This method assumes that you have segmented your customers in distinct segments. In order to calculate CLV, we will need the following inputs:
+
+1. Transition probability matrix
+2. Margin per customer in each segment
+3. Number of customers in each segment
+4. Discount rate
+5. Number of periods over which CLV has to be calculated
+
+Please refer to the lecture slides if you want to know more about the method.
+
+In this note I am going to use a simple example that is already on the slides. I am going to manually input the transition matrix and the rest of the inputs so that this note is self contained.
+
+We start off by loading the functions from `clv.R`. Make sure that you have this file on your hard drive.
+
+```{r}
+source("clv.R")
+```
+
+Next we get all the inputs required to give to the CLV functions.
+
+```{r}
+
+# Input the transition matrix
+
+transmat <- matrix(c(0.50, 0.20, 0.30, 0.00, 0.00,
+                     0.10, 0.50, 0.40, 0.00, 0.00,
+                     0.05, 0.25, 0.00, 0.70, 0.00,
+                     0.01, 0.09, 0.00, 0.00, 0.90,
+                     0.00, 0.00, 0.00, 0.00, 1.00), 
+                     nrow = 5, ncol = 5, byrow = TRUE)
+
+```
+
+Let's name the columns of this matrix so that we know what they stand for
+
+```{r}
+
+colnames(transmat) <- c("Active_20","Active_80","Warm","Cold","Lost")
+
+```
+
+Input other paramters.
+
+```{r}
+# Input the margin per customer in each segment
+
+grmargin <- c(250, 37, 0, 0, 0)
+
+# Number of customers in each segment
+
+numcust <- c(3600, 14400, 9500, 6200, 21900)
+
+# Discount rate. For this example, I will take it as 15%
+
+discount <- 0.15
+
+# Number of periods over which we will calculate CLV.
+
+periods <- 8
+```
+
+
+Once we have all the necessary information, let's explore what the functions will do.
+
+We will start off by getting a matrix for the transition of customers from one segment to another over the 8 periods. For this we will use `clv_cust_dist` function. The function will return a matrix of customer transition through time. The syntax of the function is as follows:
+
+`clv_cust_dist(tmat = , cust0 = , numperiod= , round=TRUE)`
+
+Where, `tmat` is the transition matrix, `cust0` is the vector of number of current customers, `numperiod` is the number of periods over which we want the transition, and `round` is an option for whether you want the output rounded to 0 decimals. By default it is `TRUE`.
+
+```{r}
+cust.dist <- clv_cust_dist(tmat = transmat, 
+                           cust0 = numcust, 
+                           numperiod = 8, 
+                           round = TRUE)
+print(cust.dist)
+```
+
+The function nicely lays down the matrix. As we see, the number of customers in the top segment has declined more than 3 times over the 8 years period. On the other hand the Lost customers ballooned from around 22,000 to almost 50,000.
+
+Next we will get the discounted margin for each segment and year. When we add the columns of this matrix, we will get the discounted revenue in each year, giving us an idea about how fast we are losing value.
+
+For this we will use `clv_dismargin` function. The syntax is as follows:
+
+`clv_dismargin(tmat = , cust0 = , margin = , drate = , numperiod= )`
+
+In this function, there is no option to round anything. This function takes two new arguments. `margin` is a vector of margins for each customer segment. `drate` is the discount rate. Let's get the discounted margins.
+
+```{r}
+dismargin <- clv_dismargin(tmat = transmat, 
+                           cust0 = numcust, 
+                           margin = grmargin, 
+                           drate = discount, 
+                           numperiod = periods)
+
+print(dismargin)
+```
+
+As Warm, Cold, and Lost customer have zero margins, all those rows are zero in future as well. Let's get the total discount margin for each year and then plot that using `ggplot`.
+
+
+First, get the total gross margins for each period.
+
+```{r}
+yrmargin <- colSums(dismargin)
+print(yrmargin)
+```
+Convert this into a data frame to plot using ggplot
+
+```{r}
+
+yrmargin_dt <- data.frame(gross_margin = yrmargin,
+                       period = 0:8)
+
+print(yrmargin_dt)
+```
+
+
+```{r}
+
+library(ggplot2)
+
+ggplot2::ggplot(yrmargin_dt, aes(x = as.factor(period), 
+                                 y = gross_margin)) +
+  geom_col() +
+  ylab("Total Discounted Margin") + xlab("Period") +
+  theme_minimal()
+```
+
+Now that we have some idea about how the discounted margin has been decreasing over the period, let's finally get the CLV for customers in each segment. This will tell us how valuable each segment is. 
+
+The third function, `clv` takes in the same inputs as the previous function `clv_dismargin` and it outputs a list with two elements. The first element is a vector named `CLV`, which consists of the CLV for each customer segments. **Note that this is CLV per customer**. The second element of the list is the sum of CLV of all the customers in our database. This is the **customer equity**.
+
+
+```{r}
+clv(tmat = transmat, 
+    cust0 = numcust, 
+    margin = grmargin, 
+    drate = discount, 
+    numperiod = periods)
+```
+
+There, we have it. **Note that the CLV doesn't take into account the margin from the current period**. Thus, it's the sum of all the discounted margins from the *future* periods. The CLV of the topmost segment is $276.6 while even Warm and Cold customers have positive CLV. This suggests that although the current margin from these segments is 0, they are still valuable. However, in order to retain them, we can't spend significant amounts as their CLV is much lower than other two segments.
+
+Customer equity is the value of the existing customer base. If you carry out this exercise for all the customers of a firm, it will have a reasonable correlation with the firm's market value. Of course, you will have to correct for the growth in the customer base over the next several years in order to get a better estimate.
+
+Finally, let's plot the CLVs
+
+```{r echo=FALSE}
+
+clv1 <- clv(tmat = transmat, 
+            cust0 = numcust, 
+            margin = grmargin,
+            drate = discount, 
+            numperiod = periods)$CLV
+# Convert this into a data frame to plot using qplot
+
+clv1 <- as.data.frame(clv1)
+colnames(clv1) <- "CLV"
+clv1$Segment <- rownames(clv1)
+clv1$Segment <- as.character(clv1$Segment)
+clv1$Segment <- factor(clv1$Segment, levels=unique(clv1$Segment))
+
+
+ggplot2::ggplot(clv1, aes(x = Segment, y = CLV)) +
+  geom_col() +
+  ylab("Customer Lifetime Value") + xlab("Customer Segment") +
+  theme_minimal()
+# ggsave("clv.png", width = 8, height = 6)
+
+```
+
+
+## Exercise
+
+If a new marketing program would cost $300,000 (in current dollars) over the next 5 years, but improved retention rates by 5% for all Active customer segments, would it be worth it?
+
+```{r}
+transmat2 <- matrix(c(0.55, 0.20, 0.25, 0.00, 0.00,
+                      0.10, 0.55, 0.35, 0.00, 0.00,
+                      0.05, 0.25, 0.00, 0.70, 0.00,
+                      0.01, 0.09, 0.00, 0.00, 0.90,
+                      0.00, 0.00, 0.00, 0.00, 1.00), 
+                      nrow = 5, ncol = 5, byrow = TRUE)
+
+clv(tmat = transmat2, 
+    cust0 = numcust, 
+    margin = grmargin, 
+    drate = discount, 
+    numperiod = periods)
+
+
+```
+

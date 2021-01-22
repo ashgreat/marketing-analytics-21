@@ -24,6 +24,11 @@ count(mex_dt, cyear)
 ```{r}
 summary(mex_dt$sale)
 ```
+```{r}
+mex_dt %>% 
+  filter(sale >= 1000000) %>% 
+  select(conm, sale)
+```
 
 We will use a subset of this data set. The output variable is `sale` and the inputs are the assets (`at`), selling and general administrative expenses (`xsga`), which some people use as a proxy for marketing, and number of employees (`emp`).
 
@@ -32,7 +37,7 @@ Due to limited number of observations, we will combine observations across the y
 ```{r}
 
 mex_dt2 <- mex_dt %>% 
-  select(sale, at, xsga, emp, sic) %>% 
+  select(sale, at, xsga, emp, sic, conm, cyear) %>% 
   mutate(across(everything(), ~ ifelse(.x <= 0, NA, .x))) %>% # Set negative or zero values to NA
   tidyr::drop_na()  %>% # Drop missing observations.
   mutate(onedsic = factor(as.integer(sic) %/% 1000)) # We will use it in the second SFA model
@@ -42,6 +47,11 @@ mex_dt2 <- mex_dt %>%
 ```{r}
 lm(sale ~ at + xsga + emp, data = mex_dt2) %>%  summary()
 ```
+```{r}
+lm(log(sale) ~ log(at) + log(xsga) + log(emp), data = mex_dt2) %>%  summary()
+```
+
+
 
 ## SFA
 
@@ -79,6 +89,11 @@ model_eff %>%
 
 ```
 
+
+```{r}
+mex_dt2_1 <- mex_dt2 %>% 
+  mutate(efficiency1 = as.numeric(model_eff))
+```
 
 ## Modeling the determinants of efficiency
 
